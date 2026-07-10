@@ -1,0 +1,825 @@
+﻿<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard รายงานค้างเบิก</title>
+    
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for Infographics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- PapaParse for CSV Parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Google Fonts: Sarabun -->
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; }
+        
+        /* Print Styles */
+        @media print {
+            body { background-color: white; }
+            /* ปิดการแสดงผลหน้าเว็บปกติทั้งหมด */
+            #upload-section, #main-dashboard, #print-modal { display: none !important; }
+            /* บังคับแสดงผลเฉพาะส่วนหน้าเอกสาร Print */
+            #print-section {
+                display: block !important;
+                visibility: visible !important;
+                position: static;
+                width: 100%;
+                padding: 0;
+            }
+            @page { margin: 1cm; }
+            
+            /* Print specific table styling to match image */
+            .print-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+            .print-table th, .print-table td { border: 1px solid black; padding: 6px; }
+            .print-table th { background-color: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Spinner Animation */
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+    <!-- UPLOAD SECTION -->
+    <div id="upload-section" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+        <div class="bg-white p-10 rounded-3xl shadow-2xl max-w-lg w-full text-center border-4 border-dashed border-indigo-200 hover:border-indigo-400 transition-colors" id="drop-zone-box">
+            <div class="mb-4 text-indigo-500 pointer-events-none">
+                <svg class="w-20 h-20 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+            </div>
+            <h1 class="text-2xl font-bold mb-2 text-slate-800 pointer-events-none">ลากไฟล์มาวางที่นี่</h1>
+            <p class="text-slate-500 mb-6 text-sm pointer-events-none">เบราว์เซอร์ไม่สามารถอ่านไฟล์ข้ามไดรฟ์อัตโนมัติได้เนื่องจากระบบความปลอดภัย<br>กรุณา <b>ลากไฟล์ A23.csv</b> มาปล่อยในกรอบนี้ หรือคลิกปุ่มด้านล่าง</p>
+            
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleFileUpload(event)">
+            <label for="csvFileInput" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl cursor-pointer transition duration-300 w-full block shadow-md hover:shadow-lg">
+                คลิกเพื่อเลือกไฟล์ CSV
+            </label>
+            <div id="upload-error" class="text-red-500 text-sm mt-4 hidden">เกิดข้อผิดพลาดในการอ่านไฟล์</div>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD -->
+    <div id="main-dashboard" class="hidden p-6 max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Dashboard รายงานค้างเบิก</h1>
+                <p class="text-slate-500 text-sm">ข้อมูลสรุปและรายงานผู้รับผิดชอบ</p>
+            </div>
+            <button onclick="location.reload()" class="mt-4 md:mt-0 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 px-4 rounded-lg transition">
+                รีเฟรช / ดึงข้อมูลใหม่
+            </button>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="col-span-1 md:col-span-2 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-md p-6 text-white relative overflow-hidden">
+                <div class="relative z-10">
+                    <p class="text-blue-100 text-sm font-medium mb-1">ยอดเงินค้างเบิกรวม</p>
+                    <h2 class="text-3xl font-bold" id="kpi-total-amount">0.00</h2>
+                    <p class="text-blue-200 text-xs mt-2">บาท</p>
+                </div>
+                <svg class="absolute -bottom-4 -right-4 w-32 h-32 text-white opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z"></path></svg>
+            </div>
+            
+            <div class="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl shadow-md p-6 text-white relative overflow-hidden">
+                <div class="relative z-10">
+                    <p class="text-emerald-100 text-sm font-medium mb-1">จำนวนรายการ</p>
+                    <h2 class="text-3xl font-bold" id="kpi-total-records">0</h2>
+                    <p class="text-emerald-200 text-xs mt-2">รายการ</p>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-r from-purple-500 to-indigo-500 rounded-xl shadow-md p-6 text-white relative overflow-hidden">
+                <div class="relative z-10">
+                    <p class="text-purple-100 text-sm font-medium mb-1">ผู้รับผิดชอบ</p>
+                    <h2 class="text-3xl font-bold" id="kpi-total-staff">0</h2>
+                    <p class="text-purple-200 text-xs mt-2">คน</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Print Document Generator Section -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div class="flex items-center gap-2 mb-4 text-indigo-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                <h2 class="text-lg font-bold text-slate-800">สร้างเอกสารเซ็นรับรอง (รายบุคคล)</h2>
+            </div>
+            
+            <div class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="w-full md:w-1/2">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">เลือกชื่อเจ้าหน้าที่ / ผู้รับผิดชอบ</label>
+                    <select id="staff-select" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border bg-white">
+                        <option value="ALL">-- เจ้าหน้าที่ทั้งหมด --</option>
+                    </select>
+                </div>
+                <div class="w-full md:w-auto">
+                    <button onclick="openPrintModal()" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-6 rounded-lg transition shadow-sm flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        สร้างเอกสาร
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- Filters -->
+            <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-6 h-fit">
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                    ตัวกรองข้อมูล
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ประจำเดือน (อิงจาก Date)</label>
+                        <select id="filter-month" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm" onchange="applyFilters()">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ประเภทผู้ป่วย (Ref.key 1)</label>
+                        <select id="filter-type" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm" onchange="applyFilters()">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ประเภทสิทธิ (Sithis)</label>
+                        <select id="filter-right" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm" onchange="applyFilters()">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ผู้รับผิดชอบ</label>
+                        <select id="filter-staff" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm" onchange="applyFilters()">
+                            <option value="">ทั้งหมด</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">ค้นหา HN / Encounter</label>
+                        <input type="text" id="filter-search" placeholder="พิมพ์ HN หรือ Encounter..." class="w-full border-slate-300 rounded-lg shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm" onkeyup="applyFilters()">
+                    </div>
+                    <button onclick="resetFilters()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2 rounded-lg transition text-sm mt-4">ล้างตัวกรอง</button>
+                </div>
+            </div>
+
+            <!-- Chart & Table Container -->
+            <div class="lg:col-span-3 space-y-6">
+                <!-- Chart -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h2 class="text-lg font-bold text-slate-800 mb-4">สัดส่วนยอดเงินค้างเบิก จำแนกตามประเภทสิทธิ</h2>
+                    <div class="h-64 w-full flex items-center justify-center">
+                        <canvas id="amountChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-6 border-b border-slate-200 flex justify-between items-center flex-wrap gap-4">
+                        <div class="flex items-center gap-3">
+                            <h2 class="text-lg font-bold text-slate-800">ตารางข้อมูลค้างเบิก</h2>
+                            <span class="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded" id="table-record-count">แสดง 0 รายการ</span>
+                        </div>
+                        <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-sm flex items-center gap-2 text-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            Export to Excel
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto h-[400px]">
+                        <table class="w-full text-sm text-left text-slate-600">
+                            <thead class="text-xs text-slate-700 uppercase bg-slate-50 sticky top-0 shadow-sm">
+                                <tr>
+                                    <th class="px-4 py-3 whitespace-nowrap">วันที่ (Date)</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">ประเภทผู้ป่วย</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">ประเภทสิทธิ</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">HN</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Encounter</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">ผู้รับผิดชอบ</th>
+                                    <th class="px-4 py-3 text-right whitespace-nowrap">ยอดเงิน (บาท)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body" class="divide-y divide-slate-100">
+                                <!-- Data rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Print Settings -->
+    <div id="print-modal" class="fixed inset-0 bg-slate-900 bg-opacity-50 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div class="bg-indigo-600 px-6 py-4 flex justify-between items-center">
+                <h3 class="text-white font-bold text-lg">ตั้งค่าหัวเอกสาร</h3>
+                <button onclick="closePrintModal()" class="text-indigo-200 hover:text-white transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <label class="block text-sm font-medium text-slate-700 mb-2">เลือกรอบข้อมูล (วันที่และครั้งที่)</label>
+                <select id="print-round-select" class="w-full border-slate-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2.5 border bg-white text-slate-800">
+                    <option value="20 ตุลาคม 2568 (ครั้งที่ 1)">20 ตุลาคม 2568 (ครั้งที่ 1)</option>
+                    <option value="20 พฤศจิกายน 2568 (ครั้งที่ 2)">20 พฤศจิกายน 2568 (ครั้งที่ 2)</option>
+                    <option value="20 ธันวาคม 2568 (ครั้งที่ 3)">20 ธันวาคม 2568 (ครั้งที่ 3)</option>
+                    <option value="20 มกราคม 2569 (ครั้งที่ 4)">20 มกราคม 2569 (ครั้งที่ 4)</option>
+                    <option value="20 กุมภาพันธ์ 2569 (ครั้งที่ 5)">20 กุมภาพันธ์ 2569 (ครั้งที่ 5)</option>
+                    <option value="20 มีนาคม 2569 (ครั้งที่ 6)">20 มีนาคม 2569 (ครั้งที่ 6)</option>
+                    <option value="20 เมษายน 2569 (ครั้งที่ 7)">20 เมษายน 2569 (ครั้งที่ 7)</option>
+                    <option value="20 พฤษภาคม 2569 (ครั้งที่ 8)">20 พฤษภาคม 2569 (ครั้งที่ 8)</option>
+                    <option value="20 มิถุนายน 2569 (ครั้งที่ 9)">20 มิถุนายน 2569 (ครั้งที่ 9)</option>
+                    <option value="20 กรกฎาคม 2569 (ครั้งที่ 10)">20 กรกฎาคม 2569 (ครั้งที่ 10)</option>
+                    <option value="20 สิงหาคม 2569 (ครั้งที่ 11)">20 สิงหาคม 2569 (ครั้งที่ 11)</option>
+                    <option value="20 กันยายน 2569 (ครั้งที่ 12)">20 กันยายน 2569 (ครั้งที่ 12)</option>
+                </select>
+            </div>
+            <div class="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t border-slate-100">
+                <button onclick="closePrintModal()" class="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition font-medium">ยกเลิก</button>
+                <button onclick="confirmPrint()" class="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition font-medium shadow-sm">ดูตัวอย่างและปริ้น</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRINT TEMPLATE (Hidden in UI, visible when printed) -->
+    <div id="print-section" class="hidden font-['Sarabun'] text-black">
+        <div class="text-center mb-6">
+            <!-- Header matching the new requirements -->
+            <h1 class="text-[20px] font-bold mb-2">รายงานติดตามลูกหนี้ค้างเบิก ปี 2569</h1>
+            <div class="text-center font-bold text-[16px] mb-4" id="print-sub-title">ข้อมูล ณ วันที่ ............................. (ครั้งที่ ......)</div>
+        </div>
+
+        <table class="print-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%; text-align: center;">ลำดับ</th>
+                    <th style="width: 12%; text-align: center;">วันที่รับบริการ</th>
+                    <th style="width: 15%; text-align: left;">ประเภทสิทธิ</th>
+                    <th style="width: 15%; text-align: center;">HN</th>
+                    <th style="width: 15%; text-align: center;">Encounter</th>
+                    <th style="width: 15%; text-align: right;">ยอดเงิน</th>
+                    <th style="width: 23%; text-align: center;">หมายเหตุ</th>
+                </tr>
+            </thead>
+            <tbody id="print-table-body">
+                <!-- Print rows -->
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5" style="text-align: right; font-weight: bold; border-right: none;">รวมทั้งสิ้น</td>
+                    <td style="text-align: right; font-weight: bold; border-left: none;" id="print-footer-total">0.00</td>
+                    <td></td> <!-- Empty for remark -->
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Signature Section -->
+        <div class="mt-12 px-8">
+            <div class="flex justify-between">
+                <div class="text-center w-64">
+                    <p class="font-bold mb-8">ผู้จัดทำรายงาน</p>
+                    <p class="mb-2">ลงชื่อ.......................................................</p>
+                    <p class="mb-2">(ณัฏฐภูมิ ช่วงสันเทียะ)</p>
+                    <p>วันที่......./......./..........</p>
+                </div>
+                
+                <div class="text-center w-64">
+                    <p class="font-bold mb-8">ผู้ตรวจสอบ</p>
+                    <p class="mb-2">ลงชื่อ.......................................................</p>
+                    <p class="mb-2" id="print-checker-name">(.......................................................)</p>
+                    <p>วันที่......./......./..........</p>
+                </div>
+            </div>
+
+            <div class="flex justify-end mt-12">
+                <div class="text-center w-64">
+                    <p class="font-bold mb-8">ผู้รับรองรายงาน</p>
+                    <p class="mb-2">ลงชื่อ.......................................................</p>
+                    <p class="mb-2">(นางสาวจรรยาพร แซ่หลี)</p>
+                    <p class="mb-2">หัวหน้าหน่วยบริหารลูกหนี้</p>
+                    <p>วันที่......./......./..........</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logic Script -->
+    <script>
+        const thaiMonths = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+        
+        let globalData = [];
+        let filteredData = [];
+        let myChart = null;
+
+        // Auto Load Data on Page Load
+        window.addEventListener('DOMContentLoaded', () => {
+            setupDragAndDrop();
+        });
+
+        // ฟังก์ชั่นพยายามโหลด CSV จากไดรฟ์อัตโนมัติ
+        function attemptAutoLoadCSV() {
+            // ฟังก์ชันนี้ไม่ใช้แล้ว ให้ใช้การอัปโหลดไฟล์ด้วยตัวเองแทน
+        }
+
+        // ฟังก์ชั่นรองรับการลากไฟล์มาวาง (Drag & Drop)
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('upload-section');
+            const dropBox = document.getElementById('drop-zone-box');
+            
+            // ป้องกันพฤติกรรมดั้งเดิมของเบราว์เซอร์ (ไม่ให้เปิดไฟล์ทับหน้าเว็บ)
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            dropZone.addEventListener('dragover', () => dropBox.classList.add('border-indigo-500', 'bg-indigo-50'));
+            dropZone.addEventListener('dragleave', () => dropBox.classList.remove('border-indigo-500', 'bg-indigo-50'));
+            
+            dropZone.addEventListener('drop', (e) => {
+                dropBox.classList.remove('border-indigo-500', 'bg-indigo-50');
+                const file = e.dataTransfer.files[0];
+                if(file) {
+                    if (file.name.endsWith('.csv')) {
+                        document.getElementById('csvFileInput').files = e.dataTransfer.files;
+                        handleFileUpload({target: {files: [file]}});
+                    } else {
+                        document.getElementById('upload-error').textContent = "กรุณาเลือกไฟล์นามสกุล .csv เท่านั้น";
+                        document.getElementById('upload-error').classList.remove('hidden');
+                    }
+                }
+            });
+        }
+
+        function parseCSVText(csvText) {
+            Papa.parse(csvText, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    processData(results.data);
+                    document.getElementById('upload-section').style.display = 'none';
+                    document.getElementById('main-dashboard').classList.remove('hidden');
+                },
+                error: function() {
+                    showFallbackUpload();
+                }
+            });
+        }
+
+        function showFallbackUpload() {
+            // โชว์หน้าจออัปโหลดเองกรณีดึงข้อมูลอัตโนมัติไม่สำเร็จ
+            document.getElementById('upload-section').classList.remove('hidden');
+        }
+
+        // Function to handle manual file upload
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            document.getElementById('upload-error').classList.add('hidden');
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    try {
+                        processData(results.data);
+                        document.getElementById('upload-section').style.display = 'none';
+                        document.getElementById('main-dashboard').classList.remove('hidden');
+                    } catch (error) {
+                        console.error("Data Processing Error:", error);
+                        document.getElementById('upload-error').textContent = "รูปแบบไฟล์ไม่ถูกต้อง หรือ ข้อมูลไม่ครบถ้วน";
+                        document.getElementById('upload-error').classList.remove('hidden');
+                    }
+                },
+                error: function(err) {
+                    document.getElementById('upload-error').textContent = "เกิดข้อผิดพลาดในการอ่านไฟล์";
+                    document.getElementById('upload-error').classList.remove('hidden');
+                }
+            });
+        }
+
+        // Helper: Parse M/D/YYYY from CSV to structured data
+        function parseCustomDate(dateStr) {
+            if (!dateStr || dateStr === '-') return { formatted: '-', monthKey: '-', monthLabel: '-' };
+            
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                const m = parts[0].padStart(2, '0');
+                const d = parts[1].padStart(2, '0');
+                const y = parts[2];
+                
+                // Formats
+                const formatted = `${d}.${m}.${y}`; // dd.mm.yyyy
+                const monthKey = `${y}-${m}`;       // 2026-03 (for sorting/filtering)
+                const thaiY = parseInt(y) + 543;
+                const monthLabel = `${thaiMonths[parseInt(parts[0]) - 1]} ${thaiY}`; // มีนาคม 2569
+                
+                return { formatted, monthKey, monthLabel, rawDate: new Date(y, parts[0] - 1, d) };
+            }
+            return { formatted: dateStr, monthKey: '-', monthLabel: '-' };
+        }
+
+        // Process parsed CSV data
+        function processData(data) {
+            const uniqueMonths = new Map();
+
+            globalData = data.map(row => {
+                let rawName = row['Table.ชื่อ'] || 'ไม่ระบุชื่อ';
+                let dateInfo = parseCustomDate(row['Date']);
+                
+                if (dateInfo.monthKey !== '-') {
+                    uniqueMonths.set(dateInfo.monthKey, dateInfo.monthLabel);
+                }
+
+                return {
+                    patientType: row['Ref.key 1'] || '-',
+                    rightType: row['Sithis'] || '-',
+                    hn: row['Customer'] || '-',
+                    encounter: row['Text'] || '-',
+                    rawDateText: row['Date'] || '-',
+                    dateDisplay: dateInfo.formatted,
+                    monthKey: dateInfo.monthKey,
+                    rawDateObj: dateInfo.rawDate,
+                    staffName: rawName,
+                    amount: parseFloat(row['SUMamount']) || 0
+                };
+            });
+
+            filteredData = [...globalData];
+
+            // Dropdowns extraction
+            const patientTypes = [...new Set(globalData.map(item => item.patientType))].filter(v => v !== '-').sort();
+            const rightTypes = [...new Set(globalData.map(item => item.rightType))].filter(v => v !== '-').sort();
+            
+            // ใช้รายชื่อแบบกำหนดเองตามที่ร้องขอ (ไม่ดึงจาก CSV) เพื่อให้มีรายชื่อให้เลือกปริ้นเสมอ
+            const staffs = [
+	"(นางสาวกุลสตรี  เตี้ยมานะ)",
+	"(นางสาวกรรัสส์ โสภี)",
+	"(นางสาวกัญญารัตน์  ภู่พันธ์)",
+	"(นางสาวมณฑารัตน์ พรหมทอง)",
+	"(นางสาวปณิกกา อุตมานันท์)",
+	"(นางสาวปอแก้ว บุญเจือ)",
+	"(นายสิทธิพงษ์ ญาณปัญญา)"
+            ];
+            
+            // Sort months descending (newest first)
+            const sortedMonths = Array.from(uniqueMonths.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+
+            // Populate Dropdowns
+            const monthSelect = document.getElementById('filter-month');
+            monthSelect.innerHTML = '<option value="">ทั้งหมด</option>';
+            sortedMonths.forEach(([key, label]) => {
+                const opt = document.createElement('option');
+                opt.value = key; opt.textContent = label;
+                monthSelect.appendChild(opt);
+            });
+
+            populateDropdown('filter-type', patientTypes);
+            populateDropdown('filter-right', rightTypes);
+            populateDropdown('staff-select', staffs);
+            populateDropdown('filter-staff', staffs);
+
+            updateDashboard();
+        }
+
+        function populateDropdown(elementId, items) {
+            const select = document.getElementById(elementId);
+            // Reset options before populating
+            if(elementId !== 'staff-select') {
+                select.innerHTML = '<option value="">ทั้งหมด</option>';
+            } else {
+                select.innerHTML = '<option value="ALL">-- เจ้าหน้าที่ทั้งหมด --</option>';
+            }
+            items.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item;
+                option.textContent = item;
+                select.appendChild(option);
+            });
+        }
+
+        function applyFilters() {
+            const monthFilter = document.getElementById('filter-month').value;
+            const typeFilter = document.getElementById('filter-type').value;
+            const rightFilter = document.getElementById('filter-right').value;
+            const staffFilter = document.getElementById('filter-staff').value;
+            const searchTerm = document.getElementById('filter-search').value.toLowerCase();
+            
+            // ฟังก์ชันสำหรับตัดช่องว่างส่วนเกิน เพื่อให้ชื่อตรงกันแม้จะมีเว้นวรรคเกินใน CSV
+            const normSpace = (str) => str ? str.replace(/\s+/g, ' ') : '';
+
+            filteredData = globalData.filter(item => {
+                const matchMonth = monthFilter === '' || item.monthKey === monthFilter;
+                const matchType = typeFilter === '' || item.patientType === typeFilter;
+                const matchRight = rightFilter === '' || item.rightType === rightFilter;
+                const matchStaff = staffFilter === '' || normSpace(item.staffName) === normSpace(staffFilter);
+                const matchSearch = searchTerm === '' || 
+                                    item.hn.toLowerCase().includes(searchTerm) || 
+                                    item.encounter.toLowerCase().includes(searchTerm);
+                
+                return matchMonth && matchType && matchRight && matchStaff && matchSearch;
+            });
+
+            updateDashboard();
+        }
+
+        function resetFilters() {
+            document.getElementById('filter-month').value = '';
+            document.getElementById('filter-type').value = '';
+            document.getElementById('filter-right').value = '';
+            document.getElementById('filter-staff').value = '';
+            document.getElementById('filter-search').value = '';
+            applyFilters();
+        }
+
+        function formatCurrency(num) {
+            return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function updateDashboard() {
+            const totalAmount = filteredData.reduce((sum, item) => sum + item.amount, 0);
+            const totalRecords = filteredData.length;
+            const uniqueStaffCount = new Set(filteredData.map(item => item.staffName)).size;
+
+            document.getElementById('kpi-total-amount').textContent = formatCurrency(totalAmount);
+            document.getElementById('kpi-total-records').textContent = totalRecords.toLocaleString();
+            document.getElementById('kpi-total-staff').textContent = uniqueStaffCount.toLocaleString();
+            document.getElementById('table-record-count').textContent = `แสดง ${totalRecords.toLocaleString()} รายการ`;
+
+            renderTable();
+            renderChart();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            const displayData = filteredData.slice(0, 1000); 
+
+            displayData.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-blue-50 transition';
+                tr.innerHTML = `
+                    <td class="px-4 py-2 whitespace-nowrap">${item.dateDisplay}</td>
+                    <td class="px-4 py-2"><span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">${item.patientType}</span></td>
+                    <td class="px-4 py-2">${item.rightType}</td>
+                    <td class="px-4 py-2 font-medium">${item.hn}</td>
+                    <td class="px-4 py-2 text-slate-500">${item.encounter}</td>
+                    <td class="px-4 py-2">${item.staffName}</td>
+                    <td class="px-4 py-2 text-right font-medium text-slate-800">${formatCurrency(item.amount)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if(filteredData.length > 1000) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="7" class="px-4 py-4 text-center text-slate-500 text-sm">แสดงข้อมูล 1,000 รายการแรกจากทั้งหมด ${filteredData.length} รายการ (ใช้ช่องค้นหาเพื่อดูข้อมูลที่เหลือ)</td>`;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function renderChart() {
+            const ctx = document.getElementById('amountChart').getContext('2d');
+            
+            const rightAmountMap = {};
+            filteredData.forEach(item => {
+                rightAmountMap[item.rightType] = (rightAmountMap[item.rightType] || 0) + item.amount;
+            });
+
+            const sortedKeys = Object.keys(rightAmountMap).sort((a, b) => rightAmountMap[b] - rightAmountMap[a]).slice(0, 5);
+            const otherKeys = Object.keys(rightAmountMap).filter(k => !sortedKeys.includes(k));
+            
+            let labels = [...sortedKeys];
+            let data = sortedKeys.map(k => rightAmountMap[k]);
+            
+            if (otherKeys.length > 0) {
+                const otherAmount = otherKeys.reduce((sum, k) => sum + rightAmountMap[k], 0);
+                labels.push('อื่นๆ');
+                data.push(otherAmount);
+            }
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#cbd5e1'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) { label += ': '; }
+                                    if (context.parsed !== null) { label += formatCurrency(context.parsed) + ' บาท'; }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- EXPORT TO EXCEL ---
+        function exportToExcel() {
+            if (filteredData.length === 0) {
+                alert("ไม่มีข้อมูลสำหรับส่งออก");
+                return;
+            }
+
+            // ใส่รหัส BOM เพื่อให้ Excel อ่านภาษาไทยได้สมบูรณ์แบบ
+            let csvContent = "\uFEFF";
+            
+            // สร้าง Header ของตาราง
+            csvContent += "วันที่,ประเภทผู้ป่วย,ประเภทสิทธิ,HN,Encounter,ผู้รับผิดชอบ,ยอดเงิน\n";
+
+            // ดึงข้อมูลแต่ละแถว
+            filteredData.forEach(item => {
+                const date = item.dateDisplay;
+                const patType = item.patientType;
+                const right = item.rightType;
+                const hn = item.hn;
+                const enc = item.encounter;
+                // ป้องกันกรณีชื่อพนักงานมีเครื่องหมายลูกน้ำ ให้ใส่ "" ครอบไว้
+                const staff = `"${item.staffName}"`; 
+                const amount = item.amount;
+                
+                csvContent += `${date},${patType},${right},${hn},${enc},${staff},${amount}\n`;
+            });
+
+            // สร้างไฟล์และสั่งดาวน์โหลด
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            
+            const now = new Date();
+            const dateString = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+            
+            // ดึงชื่อพนักงานจาก filter มาตั้งเป็นชื่อไฟล์ (ถ้าไม่เลือกใครเลยให้ใช้คำว่า 'ทั้งหมด')
+            const staffFilterVal = document.getElementById('filter-staff').value;
+            const staffNameFile = staffFilterVal ? staffFilterVal.replace(/[()]/g, '').trim() : "ทั้งหมด";
+            
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `รายงานคงค้าง_${staffNameFile}_${dateString}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // --- PRINT LOGIC ---
+
+        function openPrintModal() {
+            // นำเงื่อนไขเช็คการเลือกพนักงานออก เพราะอนุญาตให้พิมพ์ "ทั้งหมด" ได้แล้ว
+            const modal = document.getElementById('print-modal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        function closePrintModal() {
+            const modal = document.getElementById('print-modal');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
+
+        function confirmPrint() {
+            const selectedStaff = document.getElementById('staff-select').value;
+            const selectedRound = document.getElementById('print-round-select').value;
+            
+            // ฟังก์ชันสำหรับตัดช่องว่างส่วนเกิน ป้องกันความผิดพลาดของระยะห่างใน CSV
+            const normSpace = (str) => str ? str.replace(/\s+/g, ' ') : '';
+
+            // Filter data: ใช้ filteredData แทน globalData เพื่อให้ดึงผลลัพธ์ตาม Filter ที่กรองไว้อยู่
+            let staffData = [];
+            if (selectedStaff === 'ALL') {
+                // หากเลือกเจ้าหน้าที่ทั้งหมด ให้ดึงข้อมูลที่ผ่านการกรอง (Filter) ปัจจุบันทั้งหมดมาปริ้น
+                staffData = [...filteredData];
+            } else {
+                staffData = filteredData.filter(item => normSpace(item.staffName) === normSpace(selectedStaff));
+            }
+
+            // Set Headers
+            document.getElementById('print-sub-title').textContent = `ข้อมูล ณ วันที่ ${selectedRound}`;
+            
+            // ตั้งชื่อช่องลายเซ็น ผู้ตรวจสอบ
+            if (selectedStaff === 'ALL') {
+                document.getElementById('print-checker-name').textContent = `(.......................................................)`;
+            } else {
+                // ตัดวงเล็บชื่อเจ้าหน้าที่ออกเวลาปริ้นถ้ามี (เผื่อใน CSV มีวงเล็บครอบ)
+                const cleanName = selectedStaff.replace(/[()]/g, '').trim();
+                document.getElementById('print-checker-name').textContent = `(${cleanName})`;
+            }
+
+            // Build Table Rows
+            const tbody = document.getElementById('print-table-body');
+            tbody.innerHTML = '';
+            let totalAmount = 0;
+
+            if (staffData.length === 0) {
+                // กรณีไม่มีข้อมูลค้างเบิก ให้แสดงบรรทัดระบุว่า "ไม่มีรายการค้างเบิก"
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="text-align: center;">1</td>
+                    <td style="text-align: center;">-</td>
+                    <td>-</td>
+                    <td style="text-align: center;">-</td>
+                    <td style="text-align: center;">-</td>
+                    <td style="text-align: right;">0.00</td>
+                    <td style="text-align: center; font-weight: bold;">ไม่มีรายงานค้างเบิก</td>
+                `;
+                tbody.appendChild(tr);
+            } else {
+                // Sort by Ref.key 1 (patientType) → Sithis (rightType) → Staff Name
+                staffData.sort((a, b) => {
+                    // Sort by patientType (Ref.key 1)
+                    const patientCmp = a.patientType.localeCompare(b.patientType, 'th');
+                    if (patientCmp !== 0) return patientCmp;
+                    
+                    // Sort by rightType (Sithis)
+                    const rightCmp = a.rightType.localeCompare(b.rightType, 'th');
+                    if (rightCmp !== 0) return rightCmp;
+                    
+                    // Sort by staffName
+                    return a.staffName.localeCompare(b.staffName, 'th');
+                });
+
+                staffData.forEach((item, index) => {
+                    totalAmount += item.amount;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="text-align: center;">${index + 1}</td>
+                        <td style="text-align: center;">${item.dateDisplay}</td>
+                        <td>${item.patientType} / ${item.rightType}</td>
+                        <td style="text-align: center;">${item.hn}</td>
+                        <td style="text-align: center;">${item.encounter}</td>
+                        <td style="text-align: right;">${formatCurrency(item.amount)}</td>
+                        <td></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            document.getElementById('print-footer-total').textContent = formatCurrency(totalAmount);
+
+            // Trigger Print
+            closePrintModal();
+            
+            // นำคลาส hidden ออกชั่วคราวก่อนปริ้น เพื่อให้แสดงข้อมูลได้
+            const printSection = document.getElementById('print-section');
+            printSection.classList.remove('hidden');
+            
+            // ซ่อน Title ของหน้าเว็บชั่วคราวเพื่อไม่ให้ติดไปในหัวกระดาษซ้ายบนตอนปริ้น
+            const originalTitle = document.title;
+            document.title = "\u200B"; // ใส่ช่องว่างที่ไม่มีขนาด (Zero-width space) แทนที่ชั่วคราว
+            
+            setTimeout(() => {
+                window.print();
+                
+                // นำคลาส hidden ใส่กลับไปซ่อนไว้ตามเดิมหลังจากหน้าต่างปริ้นทำงาน
+                printSection.classList.add('hidden');
+                
+                // คืนค่า Title กลับมาเป็นเหมือนเดิมบนหน้าเว็บ
+                document.title = originalTitle;
+            }, 300);
+        }
+    </script>
+</body>
+</html>
